@@ -21,8 +21,7 @@ library(ggplot2)
 Now, upload the file "Class_Motivation.csv" from the Assignment 3 Repository as a data frame called "K1""
 ```{r}
 
-K1 <- read.table(...)
-
+K1 <- read.table("Class_Motivation.csv", sep = ",", header = TRUE)
 ```
 
 This file contains the self-reported motivation scores for a class over five weeks. We are going to look for patterns in motivation over this time and sort people into clusters based on those patterns.
@@ -39,7 +38,9 @@ K2 <- dplyr::select(K1, 2:6)
 
 It is important to think about the meaning of missing values when clustering. We could treat them as having meaning or we could remove those people who have them. Neither option is ideal. What problems do you foresee if we recode or remove these values? Write your answers below:
 
+# if recode: it is not realistic to impute for the missing values based on other people's motivation values, since these motivation could be very indicidual-specific (within subject)
 
+# if remove: we may end up losing too many sample size
 
 We will remove people with missing values for this assignment, but keep in mind the issues that you have identified.
 
@@ -48,16 +49,15 @@ We will remove people with missing values for this assignment, but keep in mind 
 
 K3 <- na.omit(K2) #This command create a data frame with only those people with no missing values. It "omits" all rows with missing values, also known as a "listwise deletion". EG - It runs down the list deleting rows as it goes.
 
+
 ```
 
 Another pre-processing step used in K-means is to standardize the values so that they have the same range. We do this because we want to treat each week as equally important - if we do not standardise then the week with the largest range will have the greatest impact on which clusters are formed. We standardise the values by using the "scales()" command.
 
 ```{r}
-
 K3 <- scale(K3)
 
 ```
-
 
 Now we will run the K-means clustering algorithm we talked about in class. 
 1) The algorithm starts by randomly choosing some starting values 
@@ -144,6 +144,9 @@ ggplot(K6, aes(week, avg, colour = cluster)) + geom_line() + xlab("Week") + ylab
 ```
 
 What patterns do you see in the plot?
+```{r}
+# There is a gap in average motivation score between cluster 1 and 2. Meanwhile, the motivation tendency (increase/decrease) between the two clusters varies in the opposite way
+```
 
 It would be useful to determine how many people are in each cluster. We can do this easily with dplyr.
 
@@ -153,16 +156,118 @@ K7 <- dplyr::count(K4, cluster)
 
 Look at the number of people in each cluster, now repeat this process for 3 rather than 2 clusters. Which cluster grouping do you think is more informative? Write your answer below:
 
+```{r}
+fit.g3 <- kmeans(K3, 3) 
+K4.g3 <- data.frame(K3, fit.g3$cluster)
+names(K4.g3) <- c("1", "2", "3", "4", "5", "cluster") 
+K5.g3 <- tidyr::gather(K4.g3, "week", "motivation", 1:5)
+K6.g3 <- K5.g3 %>% group_by(week, cluster)
+K6.g3 <- summarise(K6.g3, avg = mean(motivation))
+K6.g3$week <- as.numeric(K6.g3$week)
+K6.g3$cluster <- as.factor(K6.g3$cluster)
+
+ggplot(K6.g3, aes(week, avg, colour = cluster)) + geom_line() + xlab("Week") + ylab("Average Motivation")
+
+K7.g3 <- dplyr::count(K4.g3, cluster)
+
+#  I think using clustiering of 3 instead of 2 seems to catch more signals of students' motivation information. When using 2 clusters, there are only high and low motivation group aross the five weeks. But using 3 clusters will result in another group that still shows a similar tendency (higher motivation) as when using 2 clusters, but it has a more varing motivation average as it has both posive and negative motivation z-scores across the five weeks.
+```
 
 Once you have done this, save both of your plots to the Assignment 5 file. Create a Zotero item to index your new computer program (Assignment 5.rmd) in Zotero. Then commit your assignment, push it to your Github account and then Pull request your version to the original assignment version so I can see it.
 
 ##Part II
 
 Now, try to do the same for the data [collected in class](https://tccolumbia.qualtrics.com/SE/?SID=SV_6RRqlSAM6lZWYQt). Create two groups of clusters, the answers to the questions and regions where people grew up. 
+```{r}
+DF1 <- read.table("cluster-class-data.csv", sep = ",", header  = TRUE)
+names(DF1) <- c("duration", "firstName", "lastName", "ownCat", "jORgif", "monNYC", "numSib", "weekSport", "mileTotc", "numfriendAndroid", "numMovie", "classSemester", "statesVisited", "cityGrow", "stateGrow", "countryGrow" )
+
+DF.ANSWER <- DF1[, 4:13]
+DF.REGION <- DF1 [, 14:16]
+DF.ANSWER$ownCat <- as.character(DF.ANSWER$ownCat)
+
+# transfer facotral variables
+DF.ANSWER$ownCat <- ifelse(DF.ANSWER$ownCat == "Yes" & !is.na(DF.ANSWER$ownCat), 1, 0)
+DF.ANSWER$jORgif <- ifelse(DF.ANSWER$jORgif == "j-iff" & !is.na(DF.ANSWER$jORgif), 1, 2)
+
+```
+
+### Cluster people's answers to questions (`DF.ANSWER`)
+```{r}
+DF.ANSWER <- scale(DF.ANSWER)
+```
+
+```{r}
+set.seed(123456)
+ANSWER.CLUSTERS <- kmeans(DF.ANSWER, 6)
+ANSWER.CLUSTERS$cluster
+ANSWER.FINAL <- data.frame(DF.ANSWER, cluster = ANSWER.CLUSTERS$cluster)
+ANSWER.CLUSTERS$size
+
+clusplot(DF.ANSWER, ANSWER.CLUSTERS$cluster,lines = 0, labels =5, color = TRUE, shade = TRUE,plotchar = TRUE,  main = 'Answers Clustering')
+```
+
+
+### Cluster where people are from? (`DF.REGION`) 
+```{r}
+install.packages("ggmap")
+library(ggmap)
+```
+```{r}
+DF.REGION$cityGrow <- as.character(DF.REGION$cityGrow)
+DF.REGION$stateGrow <- as.character(DF.REGION$state)
+DF.REGION$countryGrow <- as.character(DF.REGION$countryGrow)
+DF.REGION$region <- paste(DF.REGION$cityGrow,DF.REGION$stateGrow,DF.REGION$countryGrow, sep = "," )
+DF.REGION$region <- as.character(DF.REGION$region)
+## use ggcode
+DF.REGION$lon <- geocode(DF.REGION$region)[,1]
+DF.REGION$lat <- geocode(DF.REGION$region)[,2]
+# gotta manually plug in some NAs because google blocked some queries. I feel there must be a more reliable way to get comeplete coordinates for locations 
+DF.REGION[3,5:6] <- c(108.2772, 14.05832) # vietnam
+DF.REGION[8,5:6] <- c(-77.71472, 39.13677) # Purcellville, Virginia, United States
+DF.REGION[13,5:6] <- c(114.0579, 22.5431) #shenzhen,guangdong,china"
+DF.REGION[16,5:6] <- c(113.7518, 23.02067) # Dongguan,Guangdong,China
+DF.REGION[17,5:6] <- c(-157.8583, 21.30694) # Honolulu,Hawaii,USA
+DF.REGION[19,5:6] <- c(-73.3579, 41.14147) # Westport,Connecticut,The United States of America
+DF.REGION[20,5:6] <- c(-82.99879, 39.96118) # Columbus,Ohio,United States
+DF.REGION[22,5:6] <- c(-74.03537, 41.43434) #"Cornwall,New York,United States"
+DF.REGION.2 <- select(DF.REGION, lon, lat) # with complete coordinates
+
+```
+
+```{r}
+install.packages("cluster")
+library(cluster)
+
+set.seed(23456)
+REGION.CLUSTERS <- kmeans(DF.REGION.2, 6)
+REGION.CLUSTERS$cluster
+REGION.CLUSTERS$size
+
+clusplot(DF.REGION.2, REGION.CLUSTERS$cluster,lines = 0, labels =5,color = TRUE,  main = 'Region Clustering')
+# I used k = 6, well, becase my glance at the dataset tells me there are about 6 different countries so it is no surprise.
+```
+
+
 
 ##Part III
 
 Create a visualization that shows the overlap between the two groups of clusters you created in part III.
+
+```{r}
+set.seed(123)
+DF.ANSWER <- scale(DF.ANSWER)
+fit <- kmeans(DF.ANSWER, 6)
+#fit$cluster
+DF.COMPOSITE <- data.frame(DF.ANSWER, cluster = fit$cluster, region = REGION.CLUSTERS$cluster)
+
+DF.COMPOSITE$region <- as.factor(DF.COMPOSITE$region)
+row.names(DF.COMPOSITE) <- DF.COMPOSITE$region
+# clusplot
+clusplot(DF.COMPOSITE, fit$cluster, lines = 0,  labels = 4, shade = TRUE, col.p = DF.COMPOSITE$region,  main = 'Question Answers/Region')
+
+# Here, the light blue color points out 6 different clusters based on answers to questions. On the other hand, in the same answer cluster there are different colors of points of the same sahpe (e.g. cluster 2, triangle), those different colors signigies different region cluster (total region cluster = 6, so there are 6 different colors)
+```
 
 Code Book:
 
